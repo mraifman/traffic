@@ -15,8 +15,13 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { setBaseUrl } from '@workspace/api-client-react';
 
-// Set API base URL so Expo (which runs outside the web proxy) can reach the server
-setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
+// Set API base URL so Expo (which runs outside the web proxy) can reach the server.
+// EXPO_PUBLIC_DOMAIN is injected by the dev script; fall back to the Replit dev domain
+// when archiving on a Mac where the env var is not available.
+const apiDomain =
+  process.env.EXPO_PUBLIC_DOMAIN ||
+  'e819b2a8-837c-439f-a9dc-aabfc03b3ac8-00-lnuyq7khhcwt.janeway.replit.dev';
+setBaseUrl(`https://${apiDomain}/api-server`);
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
