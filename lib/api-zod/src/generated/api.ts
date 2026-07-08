@@ -122,32 +122,3 @@ export const DeleteSessionParams = zod.object({
 export const DeleteSessionResponse = zod.void()
 
 
-/**
- * @summary Run COCO-SSD object detection on a JPEG frame
- */
-export const detectObjectsBodyThresholdDefault = 0.35;
-export const detectObjectsBodyThresholdMin = 0;
-export const detectObjectsBodyThresholdMax = 1;
-
-
-
-export const DetectObjectsBody = zod.object({
-  "image": zod.string().describe('Base64-encoded JPEG frame (no data URI prefix)'),
-  "threshold": zod.number().min(detectObjectsBodyThresholdMin).max(detectObjectsBodyThresholdMax).default(detectObjectsBodyThresholdDefault)
-})
-
-export const detectObjectsResponseDetectionsItemBboxNormMin = 4;
-export const detectObjectsResponseDetectionsItemBboxNormMax = 4;
-
-
-
-export const DetectObjectsResponse = zod.object({
-  "detections": zod.array(zod.object({
-  "classId": zod.number(),
-  "className": zod.string(),
-  "score": zod.number(),
-  "bboxNorm": zod.array(zod.number()).min(detectObjectsResponseDetectionsItemBboxNormMin).max(detectObjectsResponseDetectionsItemBboxNormMax).describe('Normalised [x1, y1, x2, y2] in [0..1]')
-}))
-})
-
-

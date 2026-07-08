@@ -15,11 +15,15 @@
     },
     "ios": {
       "supportsTablet": false,
+      "bundleIdentifier": "com.trafficanalyzer.mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "Used to view live traffic for manual counting"
+        "NSCameraUsageDescription": "Used to automatically detect and count vehicles, cyclists, and pedestrians in real time"
       }
     },
-    "android": {},
+    "android": {
+      "package": "com.trafficanalyzer.mobile",
+      "permissions": ["android.permission.CAMERA"]
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -31,7 +35,8 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-camera"
     ],
     "experiments": {
       "typedRoutes": true,

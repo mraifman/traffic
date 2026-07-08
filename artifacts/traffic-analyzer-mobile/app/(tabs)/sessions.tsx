@@ -159,7 +159,7 @@ export default function SessionsScreen() {
     const doDelete = () => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       deleteSession.mutate(
-        { params: { id } },
+        { id },
         {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });

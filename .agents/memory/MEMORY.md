@@ -1,0 +1,3 @@
+- [Mobile ML stack](mobile-ml-stack.md) — expo-camera + react-native-fast-tflite (CoreML); VisionCamera v5 crashes Metro on Replit (no watchman + pnpm virtual store temp-file issue).
+- [EfficientDet model mismatch](efficientdet-model.md) — yolo11n.tflite is actually EfficientDet-Lite0; parser expects 4 outputs [boxes,classes,scores,numDet].
+- [pnpm + Expo version pins](expo-pnpm-versions.md) — expo SDK 54 needs expo-image-manipulator@~14.0.8; installing without pin gets v57 which mismatches.

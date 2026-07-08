@@ -18,6 +18,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@stardazed/streams-text-encoding": "^1.0.2",
     "@tanstack/react-query": "catalog:",
+    "@types/jpeg-js": "^0.3.7",
     "@types/react": "~19.1.10",
     "@types/react-dom": "~19.1.7",
     "@ungap/structured-clone": "^1.3.0",
@@ -57,6 +58,9 @@
   },
   "dependencies": {
     "expo-camera": "^17.0.10",
-    "expo-image-manipulator": "^57.0.2"
+    "expo-image-manipulator": "~14.0.8",
+    "jpeg-js": "^0.4.4",
+    "react-native-fast-tflite": "^3.0.1",
+    "react-native-nitro-modules": "^0.36.1"
   }
 }

@@ -1,6 +1,5 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { loadModel } from "./lib/model";
 
 const rawPort = process.env["PORT"];
 
@@ -23,6 +22,4 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
-  // Kick off model loading in the background so the first /detect call is fast
-  loadModel().catch((err) => logger.error({ err }, "Background model load failed"));
 });

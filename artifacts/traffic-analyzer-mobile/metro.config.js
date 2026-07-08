@@ -1,3 +1,8 @@
 const { getDefaultConfig } = require('expo/metro-config');
 
-module.exports = getDefaultConfig(__dirname);
+const config = getDefaultConfig(__dirname);
+
+// Allow bundling .tflite model files as assets
+config.resolver.assetExts.push('tflite');
+
+module.exports = config;

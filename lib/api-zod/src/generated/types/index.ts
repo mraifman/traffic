@@ -6,9 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export * from './detection';
-export * from './detectRequest';
-export * from './detectResponse';
 export * from './healthStatus';
 export * from './session';
 export * from './sessionInput';

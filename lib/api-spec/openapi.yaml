@@ -12,8 +12,6 @@ tags:
     description: Health operations
   - name: sessions
     description: Traffic counting sessions
-  - name: detect
-    description: On-frame object detection
 paths:
   /healthz:
     get:
@@ -91,26 +89,6 @@ paths:
       responses:
         "204":
           description: Deleted
-  /detect:
-    post:
-      operationId: detectObjects
-      tags: [detect]
-      summary: Run COCO-SSD object detection on a JPEG frame
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DetectRequest"
-      responses:
-        "200":
-          description: Detection results
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DetectResponse"
-        "503":
-          description: Model not ready yet
 
 components:
   schemas:
@@ -219,40 +197,3 @@ components:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
-    DetectRequest:
-      type: object
-      required: [image]
-      properties:
-        image:
-          type: string
-          description: Base64-encoded JPEG frame (no data URI prefix)
-        threshold:
-          type: number
-          minimum: 0
-          maximum: 1
-          default: 0.35
-    DetectResponse:
-      type: object
-      required: [detections]
-      properties:
-        detections:
-          type: array
-          items:
-            $ref: "#/components/schemas/Detection"
-    Detection:
-      type: object
-      required: [classId, className, score, bboxNorm]
-      properties:
-        classId:
-          type: integer
-        className:
-          type: string
-        score:
-          type: number
-        bboxNorm:
-          type: array
-          items:
-            type: number
-          minItems: 4
-          maxItems: 4
-          description: Normalised [x1, y1, x2, y2] in [0..1]
