@@ -1,0 +1,149 @@
+Last login: Wed Jul  8 16:12:57 on ttys000
+matthewraifman@Matthews-MacBook-Pro ~ % cd traffic
+git pull
+cd artifacts/traffic-analyzer-mobile/ios
+pod install
+open TrafficAnalyzeriOS.xcworkspace
+remote: Enumerating objects: 37, done.
+remote: Counting objects: 100% (37/37), done.
+remote: Compressing objects: 100% (25/25), done.
+remote: Total 33 (delta 5), reused 33 (delta 5), pack-reused 0 (from 0)
+Unpacking objects: 100% (33/33), 1.44 MiB | 3.92 MiB/s, done.
+From https://github.com/mraifman/traffic
+   5ad4443..61f0641  main       -> origin/main
+Updating 5ad4443..61f0641
+Fast-forward
+ artifacts/traffic-analyzer-mobile/.gitignore       |   2 +-
+ artifacts/traffic-analyzer-mobile/ios/.gitignore   |  30 ++
+ artifacts/traffic-analyzer-mobile/ios/.xcode.env   |  11 +
+ artifacts/traffic-analyzer-mobile/ios/Podfile      |  63 +++
+ .../ios/Podfile.properties.json                    |   5 +
+ .../TrafficAnalyzeriOS.xcodeproj/project.pbxproj   | 436 +++++++++++++++++++++
+ .../xcschemes/TrafficAnalyzeriOS.xcscheme          |  88 +++++
+ .../ios/TrafficAnalyzeriOS/AppDelegate.swift       |  70 ++++
+ .../AppIcon.appiconset/App-Icon-1024x1024@1x.png   | Bin 0 -> 721917 bytes
+ .../AppIcon.appiconset/Contents.json               |  14 +
+ .../Images.xcassets/Contents.json                  |   6 +
+ .../SplashScreenBackground.colorset/Contents.json  |  20 +
+ .../SplashScreenLegacy.imageset/Contents.json      |  23 ++
+ .../SplashScreenLegacy.imageset/image.png          | Bin 0 -> 846735 bytes
+ .../SplashScreenLegacy.imageset/image@2x.png       | Bin 0 -> 846735 bytes
+ .../SplashScreenLegacy.imageset/image@3x.png       | Bin 0 -> 846735 bytes
+ .../ios/TrafficAnalyzeriOS/Info.plist              |  86 ++++
+ .../ios/TrafficAnalyzeriOS/SplashScreen.storyboard |  48 +++
+ .../ios/TrafficAnalyzeriOS/Supporting/Expo.plist   |  12 +
+ .../TrafficAnalyzeriOS-Bridging-Header.h           |   3 +
+ .../TrafficAnalyzeriOS.entitlements                |   5 +
+ 21 files changed, 921 insertions(+), 1 deletion(-)
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/.gitignore
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/.xcode.env
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/Podfile
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/Podfile.properties.json
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS.xcodeproj/project.pbxproj
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS.xcodeproj/xcshareddata/xcschemes/TrafficAnalyzeriOS.xcscheme
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/AppDelegate.swift
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/Images.xcassets/AppIcon.appiconset/Contents.json
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/Images.xcassets/Contents.json
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/Images.xcassets/SplashScreenBackground.colorset/Contents.json
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/Images.xcassets/SplashScreenLegacy.imageset/Contents.json
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/Images.xcassets/SplashScreenLegacy.imageset/image.png
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/Images.xcassets/SplashScreenLegacy.imageset/image@2x.png
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/Images.xcassets/SplashScreenLegacy.imageset/image@3x.png
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/Info.plist
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/SplashScreen.storyboard
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/Supporting/Expo.plist
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/TrafficAnalyzeriOS-Bridging-Header.h
+ create mode 100644 artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS/TrafficAnalyzeriOS.entitlements
+Using Expo modules
+Found 1 module for target `TrafficAnalyzeriOS`
+link_native_modules! {ios_packages: [{configurations: [], name: "expo", root: "/Users/matthewraifman/node_modules/.pnpm/expo@56.0.5_@babel+core@7.29.7_@expo+dom-webview@56.0.5_react-native@0.85.3_@babel+core_5274e0b397e01730fff62ef2b59dc452/node_modules/expo", path: "../../../../node_modules/.pnpm/expo@56.0.5_@babel+core@7.29.7_@expo+dom-webview@56.0.5_react-native@0.85.3_@babel+core_5274e0b397e01730fff62ef2b59dc452/node_modules/expo", podspec_path: "/Users/matthewraifman/node_modules/.pnpm/expo@56.0.5_@babel+core@7.29.7_@expo+dom-webview@56.0.5_react-native@0.85.3_@babel+core_5274e0b397e01730fff62ef2b59dc452/node_modules/expo/Expo.podspec", script_phases: []}], ios_project_root_path: "/Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios", react_native_path: "../../../../node_modules/.pnpm/react-native@0.85.3_@babel+core@7.29.7_@types+react@19.2.17_react@19.2.3/node_modules/react-native"}
+Auto-linking React Native module for target `TrafficAnalyzeriOS`: Expo
+Framework build type is static library
+[ReactNativeDependencies] Setting up ReactNativeDependencies...
+[ReactNativeDependencies] Building from source: false
+[ReactNativeDependencies] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.85.3/react-native-artifacts-0.85.3-reactnative-dependencies-debug.tar.gz
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 17.8M  100 17.8M    0     0  13.9M      0  0:00:01  0:00:01 --:--:-- 13.9M
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100  9.9M  100  9.9M    0     0  10.9M      0 --:--:-- --:--:-- --:--:-- 11.0M
+[ReactNativeDependencies] Source: {http: "file:///Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/Pods/ReactNativeDependencies-artifacts/reactnative-dependencies-0.85.3-debug.tar.gz"}
+[ReactNativeCore] Setting up ReactNativeCore...
+[ReactNativeCore] Building from source: false
+Configuring the target with the New Architecture
+[ReactNativeCore] Using React Native Core and React Native Dependencies prebuilt versions.
+[Codegen] Analyzing /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/package.json
+[Codegen] Searching for codegen-enabled libraries in the app.
+[Codegen] The "codegenConfig" field is not defined in package.json. Assuming there is nothing to generate at the app level.
+[Codegen] Searching for codegen-enabled libraries in react-native.config.js
+[Codegen] No codegen-enabled libraries found.
+[Codegen] Generating RCTThirdPartyComponentsProvider.h
+[Codegen] Generated artifact: /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/build/generated/ios/ReactCodegen/RCTThirdPartyComponentsProvider.h
+[Codegen] Generating RCTThirdPartyComponentsProvider.mm
+[Codegen] Generated artifact: /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/build/generated/ios/ReactCodegen/RCTThirdPartyComponentsProvider.mm
+[Codegen] Generating RCTModulesProvider.h
+[Codegen] Generated artifact: /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/build/generated/ios/ReactCodegen/RCTModuleProviders.h
+[Codegen] Generating RCTModuleProviders.mm
+[Codegen] Generated artifact: /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/build/generated/ios/ReactCodegen/RCTModuleProviders.mm
+[Codegen] Generating RCTAppDependencyProvider
+[Codegen] Generated artifact: /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/build/generated/ios/ReactAppDependencyProvider/RCTAppDependencyProvider.h
+[Codegen] Generated artifact: /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/build/generated/ios/ReactAppDependencyProvider/RCTAppDependencyProvider.mm
+[Codegen] Generated podspec: /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/build/generated/ios/ReactAppDependencyProvider/ReactAppDependencyProvider.podspec
+[Codegen] Generated podspec: /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/build/generated/ios/ReactCodegen/ReactCodegen.podspec
+[Codegen] Generating Package.swift
+[Codegen] Generated artifact: /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/build/generated/ios/Package.swift
+[Codegen] Done.
+Analyzing dependencies
+Fetching podspec for `React-Core-prebuilt` from `../../../../node_modules/.pnpm/react-native@0.85.3_@babel+core@7.29.7_@types+react@19.2.17_react@19.2.3/node_modules/react-native/React-Core-prebuilt.podspec`
+[ReactNativeCore] Downloading ReactNativeCore-prebuilt debug tarball from https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.85.3/react-native-artifacts-0.85.3-reactnative-core-debug.tar.gz to ../../../../../traffic/artifacts/traffic-analyzer-mobile/ios/Pods/ReactNativeCore-artifacts/reactnative-core-0.85.3-debug.tar.gz
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 91.3M  100 91.3M    0     0  16.8M      0  0:00:05  0:00:05 --:--:-- 17.8M
+[ReactNativeCore] Downloading ReactNativeCore-prebuilt release tarball from https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.85.3/react-native-artifacts-0.85.3-reactnative-core-release.tar.gz to ../../../../../traffic/artifacts/traffic-analyzer-mobile/ios/Pods/ReactNativeCore-artifacts/reactnative-core-0.85.3-release.tar.gz
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 28.8M  100 28.8M    0     0  11.9M      0  0:00:02  0:00:02 --:--:-- 11.9M
+[ReactNativeCore] Resolved stable ReactNativeCore-prebuilt version:
+[ReactNativeCore]   ../../../../../traffic/artifacts/traffic-analyzer-mobile/ios/Pods/ReactNativeCore-artifacts/reactnative-core-0.85.3-debug.tar.gz
+[ReactNativeCore]   ../../../../../traffic/artifacts/traffic-analyzer-mobile/ios/Pods/ReactNativeCore-artifacts/reactnative-core-0.85.3-release.tar.gz
+Fetching podspec for `ReactNativeDependencies` from `../../../../node_modules/.pnpm/react-native@0.85.3_@babel+core@7.29.7_@types+react@19.2.17_react@19.2.3/node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`
+[ReactNativeDependencies] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.85.3/react-native-artifacts-0.85.3-reactnative-dependencies-debug.tar.gz
+Fetching podspec for `hermes-engine` from `../../../../node_modules/.pnpm/react-native@0.85.3_@babel+core@7.29.7_@types+react@19.2.17_react@19.2.3/node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`
+[Hermes] Using release tarball from URL: https://repo1.maven.org/maven2/com/facebook/hermes/hermes-ios/250829098.0.10/hermes-ios-250829098.0.10-hermes-ios-debug.tar.gz
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 28.4M  100 28.4M    0     0  16.2M      0  0:00:01  0:00:01 --:--:-- 16.2M
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 22.3M  100 22.3M    0     0  16.5M      0  0:00:01  0:00:01 --:--:-- 16.5M
+[!] CocoaPods could not find compatible versions for pod "Expo":
+  In Podfile:
+    Expo (from `../../../../node_modules/.pnpm/expo@56.0.5_@babel+core@7.29.7_@expo+dom-webview@56.0.5_react-native@0.85.3_@babel+core_5274e0b397e01730fff62ef2b59dc452/node_modules/expo`)
+
+Specs satisfying the `Expo (from `../../../../node_modules/.pnpm/expo@56.0.5_@babel+core@7.29.7_@expo+dom-webview@56.0.5_react-native@0.85.3_@babel+core_5274e0b397e01730fff62ef2b59dc452/node_modules/expo`)` dependency were found, but they required a higher minimum deployment target.
+
+[!] [Expo] @expo/dom-webview was not linked: requires iOS 16.4 but app targets 15.1
+
+[!] [Expo] @expo/log-box was not linked: requires iOS 16.4 but app targets 15.1
+
+[!] [Expo] expo was not linked: requires iOS 16.4 but app targets 15.1
+
+[!] [Expo] expo-asset was not linked: requires iOS 16.4 but app targets 15.1
+
+[!] [Expo] expo-constants was not linked: requires iOS 16.4 but app targets 15.1
+
+[!] [Expo] expo-file-system was not linked: requires iOS 16.4 but app targets 15.1
+
+[!] [Expo] expo-font was not linked: requires iOS 16.4 but app targets 15.1
+
+[!] [Expo] expo-keep-awake was not linked: requires iOS 16.4 but app targets 15.1
+
+[!] [Expo] expo-modules-core was not linked: requires iOS 16.4 but app targets 15.1
+
+[!] [Expo] expo-modules-core was not linked: requires iOS 16.4 but app targets 15.1
+
+[!] [Expo] expo-modules-jsi was not linked: requires iOS 16.4 but app targets 15.1
+The file /Users/matthewraifman/traffic/artifacts/traffic-analyzer-mobile/ios/TrafficAnalyzeriOS.xcworkspace does not exist.
+matthewraifman@Matthews-MacBook-Pro ios % 
