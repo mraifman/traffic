@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Traffic Analyzer"
+version = "1.0.0"
+id = "artifacts/traffic-analyzer"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25783
+
+[services.development]
+run = "pnpm --filter @workspace/traffic-analyzer run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/traffic-analyzer", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/traffic-analyzer/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25783"
+BASE_PATH = "/"

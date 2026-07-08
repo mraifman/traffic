@@ -3,20 +3,21 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Traffic Analyzer API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: sessions
+    description: Traffic counting sessions
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +25,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /sessions:
+    get:
+      operationId: listSessions
+      tags: [sessions]
+      summary: List all saved sessions
+      responses:
+        "200":
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+    post:
+      operationId: createSession
+      tags: [sessions]
+      summary: Save a counting session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+  /sessions/{id}:
+    get:
+      operationId: getSession
+      tags: [sessions]
+      summary: Get a session by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteSession
+      tags: [sessions]
+      summary: Delete a session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
     HealthStatus:
@@ -33,4 +99,101 @@ components:
           type: string
       required:
         - status
-
+    Session:
+      type: object
+      required:
+        - id
+        - name
+        - source
+        - startedAt
+        - totalCars
+        - totalPedestrians
+        - totalBikes
+        - totalMotorcycles
+        - totalTrucks
+        - totalBuses
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        source:
+          type: string
+          enum: [camera, file]
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: ["string", "null"]
+          format: date-time
+        durationSeconds:
+          type: ["integer", "null"]
+        pixelsPerMeter:
+          type: ["number", "null"]
+        totalCars:
+          type: integer
+        totalPedestrians:
+          type: integer
+        totalBikes:
+          type: integer
+        totalMotorcycles:
+          type: integer
+        totalTrucks:
+          type: integer
+        totalBuses:
+          type: integer
+        avgSpeedKph:
+          type: ["number", "null"]
+        maxSpeedKph:
+          type: ["number", "null"]
+        location:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+    SessionInput:
+      type: object
+      required:
+        - name
+        - source
+        - totalCars
+        - totalPedestrians
+        - totalBikes
+        - totalMotorcycles
+        - totalTrucks
+        - totalBuses
+      properties:
+        name:
+          type: string
+        source:
+          type: string
+          enum: [camera, file]
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: ["string", "null"]
+          format: date-time
+        durationSeconds:
+          type: ["integer", "null"]
+        pixelsPerMeter:
+          type: ["number", "null"]
+        totalCars:
+          type: integer
+        totalPedestrians:
+          type: integer
+        totalBikes:
+          type: integer
+        totalMotorcycles:
+          type: integer
+        totalTrucks:
+          type: integer
+        totalBuses:
+          type: integer
+        avgSpeedKph:
+          type: ["number", "null"]
+        maxSpeedKph:
+          type: ["number", "null"]
+        location:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]

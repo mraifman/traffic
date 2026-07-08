@@ -1,9 +1,10 @@
-# [Project name]
+# Traffic Analyzer
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A browser-based traffic intelligence workstation for counting and timing vehicles, cyclists, and pedestrians from a fixed camera. Uses TensorFlow.js + COCO-SSD for real-time ML detection with no server-side inference required.
 
 ## Run & Operate
 
+- `pnpm --filter @workspace/traffic-analyzer run dev` — run the frontend (auto-assigned port)
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
@@ -14,23 +15,40 @@ _Replace the heading above with the project's name, and this line with one sente
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
+- Frontend: React + Vite + Tailwind CSS (dark, dense monitoring aesthetic)
+- ML: `@tensorflow-models/coco-ssd` + `@tensorflow/tfjs` (browser inference, Google CDN)
+- Tracking: custom IoU-based centroid tracker (`src/lib/tracker.ts`)
+- Speed estimation: pixel displacement × pixels-per-meter calibration ratio
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/traffic-analyzer/src/lib/detector.ts` — TF.js COCO-SSD detection wrapper
+- `artifacts/traffic-analyzer/src/lib/tracker.ts` — IoU-based object tracker + speed calc
+- `artifacts/traffic-analyzer/src/hooks/useAnalyzer.ts` — main orchestration hook
+- `artifacts/traffic-analyzer/src/context/AnalyzerContext.tsx` — shared context (prevents state loss on route change)
+- `artifacts/traffic-analyzer/src/pages/` — home, analyze, setup, sessions
+- `artifacts/api-server/src/routes/sessions.ts` — session CRUD API routes
+- `lib/db/src/schema/sessions.ts` — sessions table schema
+- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contract)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **Browser-only inference**: TF.js COCO-SSD runs entirely in the browser. No Python backend or server-side inference. Models download from Google CDN on first use (~20MB, cached afterwards).
+- **Shared analyzer context**: `AnalyzerProvider` wraps the router so analyzer state (video refs, counts, model) persists across route changes (home → analyze).
+- **IoU tracking**: Objects are matched frame-to-frame by IoU overlap. Objects are counted once they've been stably tracked for ≥3 frames. Tracks are dropped after 8 missed frames.
+- **Speed estimation**: Displacement of tracked centroid over a ~300ms window, converted from pixels to meters via user-supplied pixels-per-meter calibration. X and Y use correct per-axis scaling (width vs height).
+- **COCO classes tracked**: person (0), bicycle (1), car (2), motorcycle (3), bus (5), truck (7).
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Home**: Choose live camera or upload a video file to analyze
+- **Analyze**: Real-time detection overlay + live counts + speed dashboard + save session
+- **Setup**: Step-by-step field guide for camera placement, calibration, and best practices
+- **Sessions**: Saved session history with counts and speed stats
 
 ## User preferences
 
@@ -38,7 +56,12 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- TF.js model is ~20MB and downloads on first use. Progress shown in the Analyze page.
+- Speed accuracy requires accurate pixels-per-meter calibration (measure a known distance in-frame).
+- Speed estimates are most accurate for perpendicular movement (objects crossing the frame horizontally).
+- COCO-SSD may miss small/distant objects — camera should be positioned 3–6m high and 10–15m of road in frame.
+- The `AnalyzerProvider` must wrap the router (not inside it) to ensure state persists across route navigations.
+- After each OpenAPI spec change, re-run codegen before using the updated types.
 
 ## Pointers
 
