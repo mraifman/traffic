@@ -1,47 +1,51 @@
-import React, { useState, useRef, useEffect } from 'react';
+/**
+ * Counter screen — automatic vehicle detection via server-side COCO-SSD.
+ *
+ * Flow:
+ *   1. expo-camera captures a low-res JPEG frame every ~300 ms
+ *   2. expo-image-manipulator resizes it to 320 px wide
+ *   3. The frame is sent to POST /api/detect (Express + COCO-SSD)
+ *   4. The IoU tracker (lib/tracker.ts) assigns stable IDs across frames
+ *   5. Bounding boxes + speed labels are drawn over the live camera preview
+ *   6. Class counts and avg/max speed update in the HUD
+ */
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Modal,
-  TextInput,
-  ScrollView,
-  Platform,
-  ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity,
+  Modal, TextInput, ScrollView, Platform,
+  ActivityIndicator, Dimensions,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSequence,
-  withSpring,
-} from 'react-native-reanimated';
 import { useColors } from '@/hooks/useColors';
 import colors from '@/constants/colors';
+import { Tracker, type TrackedObject } from '@/lib/tracker';
 import { useCreateSession, getListSessionsQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 
-// ─── types ────────────────────────────────────────────────────────────────────
+// ─── constants ────────────────────────────────────────────────────────────────
 
 type VehicleKey = 'cars' | 'pedestrians' | 'bikes' | 'motorcycles' | 'trucks' | 'buses';
 type Counts = Record<VehicleKey, number>;
+
+const CLASS_MAP: Record<string, { key: VehicleKey; color: string; icon: string }> = {
+  car:        { key: 'cars',         color: colors.vehicles.cars,         icon: 'car' },
+  person:     { key: 'pedestrians',  color: colors.vehicles.pedestrians,  icon: 'walk' },
+  bicycle:    { key: 'bikes',        color: colors.vehicles.bikes,        icon: 'bicycle' },
+  motorcycle: { key: 'motorcycles',  color: colors.vehicles.motorcycles,  icon: 'motorbike' },
+  bus:        { key: 'buses',        color: colors.vehicles.buses,        icon: 'bus' },
+  truck:      { key: 'trucks',       color: colors.vehicles.trucks,       icon: 'truck' },
+};
 
 const DEFAULT_COUNTS: Counts = {
   cars: 0, pedestrians: 0, bikes: 0, motorcycles: 0, trucks: 0, buses: 0,
 };
 
-const VEHICLES: { key: VehicleKey; label: string; icon: string; color: string }[] = [
-  { key: 'cars',         label: 'Car',     icon: 'car',      color: colors.vehicles.cars },
-  { key: 'pedestrians',  label: 'Person',  icon: 'walk',     color: colors.vehicles.pedestrians },
-  { key: 'bikes',        label: 'Bicycle', icon: 'bicycle',  color: colors.vehicles.bikes },
-  { key: 'motorcycles',  label: 'Moto',    icon: 'motorbike',color: colors.vehicles.motorcycles },
-  { key: 'trucks',       label: 'Truck',   icon: 'truck',    color: colors.vehicles.trucks },
-  { key: 'buses',        label: 'Bus',     icon: 'bus',      color: colors.vehicles.buses },
-];
+const CAPTURE_W = 320; // resize before sending to server
+const BOTTOM_EXTRA = Platform.select({ ios: 50, web: 34, default: 12 })!;
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -52,42 +56,57 @@ function formatDate(d: Date) {
 }
 function round1(n: number) { return Math.round(n * 10) / 10; }
 
-// Bottom padding: enough to clear the tab bar on iOS (liquid glass ~83px total, insets.bottom ~34px, so +50 extra)
-const CTRL_BOTTOM_EXTRA = Platform.select({ ios: 50, web: 34, default: 12 })!;
+// ─── BoundingBoxOverlay ────────────────────────────────────────────────────────
 
-// ─── CountButton ──────────────────────────────────────────────────────────────
-
-function CountButton({
-  vehicle, count, onPress, disabled,
+function BoundingBoxOverlay({
+  tracks,
+  viewWidth,
+  viewHeight,
 }: {
-  vehicle: (typeof VEHICLES)[0]; count: number; onPress: () => void; disabled: boolean;
+  tracks: TrackedObject[];
+  viewWidth: number;
+  viewHeight: number;
 }) {
-  const scale = useSharedValue(1);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const handlePress = () => {
-    scale.value = withSequence(withSpring(0.86, { duration: 70 }), withSpring(1, { duration: 110 }));
-    onPress();
-  };
+  if (viewWidth === 0 || viewHeight === 0) return null;
+
   return (
-    <Animated.View style={[styles.btnWrap, style]}>
-      <TouchableOpacity
-        style={[styles.countBtn, { borderColor: vehicle.color + '55' }]}
-        onPress={handlePress}
-        activeOpacity={0.8}
-        disabled={disabled}
-        testID={`btn-${vehicle.key}`}
-      >
-        <View style={[styles.countBadge, { backgroundColor: vehicle.color + '22' }]}>
-          <MaterialCommunityIcons name={vehicle.icon as any} size={26} color={vehicle.color} />
-        </View>
-        <Text style={[styles.countNum, { color: vehicle.color }]}>{count}</Text>
-        <Text style={styles.countLabel}>{vehicle.label}</Text>
-      </TouchableOpacity>
-    </Animated.View>
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {tracks.map((t) => {
+        const meta = CLASS_MAP[t.className];
+        if (!meta) return null;
+        const [x1, y1, x2, y2] = t.bbox;
+        const left   = x1 * viewWidth;
+        const top    = y1 * viewHeight;
+        const width  = (x2 - x1) * viewWidth;
+        const height = (y2 - y1) * viewHeight;
+        const color  = meta.color;
+        const speed  = t.speedKph != null ? ` ${Math.round(t.speedKph)}km/h` : '';
+        return (
+          <View key={t.id} style={[styles.bbox, { left, top, width, height, borderColor: color }]}>
+            <View style={[styles.bboxTag, { backgroundColor: color }]}>
+              <Text style={styles.bboxTagText} numberOfLines={1}>
+                {t.className}{speed}
+              </Text>
+            </View>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
-// ─── Main screen ──────────────────────────────────────────────────────────────
+// ─── CountChip ────────────────────────────────────────────────────────────────
+
+function CountChip({ label, icon, count, color }: { label: string; icon: string; count: number; color: string }) {
+  return (
+    <View style={[styles.chip, { borderColor: color + '55', backgroundColor: color + '14' }]}>
+      <MaterialCommunityIcons name={icon as any} size={13} color={color} />
+      <Text style={[styles.chipCount, { color }]}>{count}</Text>
+    </View>
+  );
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function CounterScreen() {
   const c = useColors();
@@ -96,18 +115,30 @@ export default function CounterScreen() {
   const queryClient = useQueryClient();
   const createSession = useCreateSession();
 
-  // Counting state
-  const [counts, setCounts] = useState<Counts>({ ...DEFAULT_COUNTS });
-  const [isRunning, setIsRunning] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startTimeRef = useRef(0);
+  // Camera
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraSize, setCameraSize] = useState({ w: Dimensions.get('window').width, h: Dimensions.get('window').height });
 
-  // Speed trap state
-  const [trapDistanceM, setTrapDistanceM] = useState(10);   // calibrated zone length in metres
-  const [trapArmed, setTrapArmed] = useState(false);         // true while timing a vehicle
-  const trapStartRef = useRef(0);
-  const [speeds, setSpeeds] = useState<number[]>([]);        // all measured speeds this session
+  // Detection loop
+  const isRunningRef = useRef(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const trackerRef = useRef(new Tracker());
+  const [tracks, setTracks] = useState<TrackedObject[]>([]);
+  const [modelReady, setModelReady] = useState<boolean | null>(null); // null = unknown
+
+  // Speed calibration
+  const [pixelsPerMeter, setPixelsPerMeter] = useState(100);
+
+  // Counts + timing
+  const [counts, setCounts] = useState<Counts>({ ...DEFAULT_COUNTS });
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTime = useRef(0);
+
+  // Derived speed stats
+  const allSpeeds = useRef<number[]>([]);
+  const [avgSpeed, setAvgSpeed] = useState<number | null>(null);
+  const [maxSpeed, setMaxSpeed] = useState<number | null>(null);
 
   // Save modal
   const [showSave, setShowSave] = useState(false);
@@ -116,62 +147,147 @@ export default function CounterScreen() {
   const [sessionNotes, setSessionNotes] = useState('');
 
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  const avgSpeed = speeds.length > 0 ? round1(speeds.reduce((a, b) => a + b, 0) / speeds.length) : null;
-  const maxSpeed = speeds.length > 0 ? round1(Math.max(...speeds)) : null;
 
-  // ── timer ──────────────────────────────────────────────────────────────────
-  const startCounting = () => {
-    startTimeRef.current = Date.now() - elapsed * 1000;
-    setIsRunning(true);
+  // ── server health check ────────────────────────────────────────────────────
+  useEffect(() => {
+    const base = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+    fetch(`${base}/api/healthz`)
+      .then((r) => r.ok ? fetch(`${base}/api/detect`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: '' }) }) : Promise.reject())
+      .then((r) => setModelReady(r.status !== 503))
+      .catch(() => setModelReady(false));
+  }, []);
+
+  // ── timer ─────────────────────────────────────────────────────────────────
+  const startTimer = () => {
+    startTime.current = Date.now() - elapsed * 1000;
     timerRef.current = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      setElapsed(Math.floor((Date.now() - startTime.current) / 1000));
     }, 500);
-  };
-  const stopCounting = () => {
-    setIsRunning(false);
-    setTrapArmed(false);
-    if (timerRef.current) clearInterval(timerRef.current);
-  };
-  const resetCounting = () => {
-    stopCounting();
-    setCounts({ ...DEFAULT_COUNTS });
-    setElapsed(0);
-    setSpeeds([]);
   };
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
-  // ── tap counter ────────────────────────────────────────────────────────────
-  const handleTap = (key: VehicleKey) => {
-    if (!isRunning) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setCounts((prev) => ({ ...prev, [key]: prev[key] + 1 }));
-  };
+  // ── detection loop ─────────────────────────────────────────────────────────
+  const detectLoop = useCallback(async () => {
+    if (!isRunningRef.current) return;
 
-  // ── speed trap ─────────────────────────────────────────────────────────────
-  // First tap: arm the trap (vehicle enters the zone)
-  // Second tap: vehicle exits — compute speed = distance / time
-  const handleTrap = () => {
-    if (!isRunning) return;
-    if (!trapArmed) {
-      trapStartRef.current = Date.now();
-      setTrapArmed(true);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    } else {
-      const dtSec = (Date.now() - trapStartRef.current) / 1000;
-      if (dtSec >= 0.1) {                               // ignore accidental double-taps
-        const kph = round1((trapDistanceM / dtSec) * 3.6);
-        setSpeeds((prev) => [...prev, kph]);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      if (!cameraRef.current) { setTimeout(detectLoop, 300); return; }
+
+      // 1. Capture frame
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.5,
+        base64: false,
+        skipProcessing: true,
+      });
+
+      if (!photo?.uri || !isRunningRef.current) { setTimeout(detectLoop, 100); return; }
+
+      // 2. Resize to keep payload small
+      const resized = await ImageManipulator.manipulateAsync(
+        photo.uri,
+        [{ resize: { width: CAPTURE_W } }],
+        { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
+
+      if (!resized.base64 || !isRunningRef.current) { setTimeout(detectLoop, 100); return; }
+
+      // 3. Send to server
+      const base = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+      const resp = await fetch(`${base}/api/detect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: resized.base64 }),
+      });
+
+      if (!isRunningRef.current) return;
+
+      if (resp.status === 503) {
+        setModelReady(false);
+        setTimeout(detectLoop, 2000);
+        return;
       }
-      setTrapArmed(false);
+      setModelReady(true);
+
+      if (resp.ok) {
+        const { detections } = await resp.json();
+
+        // 4. Run tracker
+        const now = Date.now();
+        const frameW = resized.width ?? CAPTURE_W;
+        const frameH = resized.height ?? Math.round(CAPTURE_W * (cameraSize.h / cameraSize.w));
+        const { tracks: newTracks, newlyCounted } = trackerRef.current.update(
+          detections,
+          now,
+          pixelsPerMeter,
+          frameW,
+          frameH,
+        );
+
+        setTracks(newTracks);
+
+        // 5. Update counts for newly confirmed objects
+        if (newlyCounted.length > 0) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setCounts((prev) => {
+            const next = { ...prev };
+            for (const obj of newlyCounted) {
+              const meta = CLASS_MAP[obj.className];
+              if (meta) next[meta.key]++;
+            }
+            return next;
+          });
+        }
+
+        // 6. Update speed stats from all active tracks
+        const speeds = newTracks
+          .map((t) => t.speedKph)
+          .filter((s): s is number => s !== null && s > 1);
+        if (speeds.length > 0) {
+          allSpeeds.current.push(...speeds);
+          const all = allSpeeds.current;
+          setAvgSpeed(round1(all.reduce((a, b) => a + b, 0) / all.length));
+          setMaxSpeed(round1(Math.max(...all)));
+        }
+      }
+    } catch {
+      // Ignore transient errors (camera busy, network blip)
     }
+
+    if (isRunningRef.current) setTimeout(detectLoop, 50);
+  }, [pixelsPerMeter, cameraSize]);
+
+  // ── start / stop ──────────────────────────────────────────────────────────
+  const handleStart = () => {
+    isRunningRef.current = true;
+    setIsRunning(true);
+    startTimer();
+    setTimeout(detectLoop, 200);
   };
 
-  // ── save ───────────────────────────────────────────────────────────────────
+  const handleStop = () => {
+    isRunningRef.current = false;
+    setIsRunning(false);
+    if (timerRef.current) clearInterval(timerRef.current);
+    setTracks([]);
+  };
+
+  const handleReset = () => {
+    handleStop();
+    setCounts({ ...DEFAULT_COUNTS });
+    setElapsed(0);
+    allSpeeds.current = [];
+    setAvgSpeed(null);
+    setMaxSpeed(null);
+    trackerRef.current.reset();
+  };
+
+  // ── save ──────────────────────────────────────────────────────────────────
   const handleSaveOpen = () => {
+    handleStop();
     setSessionName(`Session ${formatDate(new Date())}`);
     setShowSave(true);
   };
+
   const handleSaveSubmit = () => {
     createSession.mutate(
       {
@@ -195,20 +311,16 @@ export default function CounterScreen() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey() });
           setShowSave(false);
-          resetCounting();
+          handleReset();
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         },
-      }
+      },
     );
   };
 
-  // ── permission gates ───────────────────────────────────────────────────────
+  // ── permission gates ──────────────────────────────────────────────────────
   if (!permission) {
-    return (
-      <View style={[styles.center, { backgroundColor: c.background }]}>
-        <ActivityIndicator color={c.primary} />
-      </View>
-    );
+    return <View style={[styles.center, { backgroundColor: c.background }]}><ActivityIndicator color={c.primary} /></View>;
   }
   if (!permission.granted) {
     return (
@@ -216,189 +328,185 @@ export default function CounterScreen() {
         <Ionicons name="camera-outline" size={56} color={c.mutedForeground} />
         <Text style={[styles.permTitle, { color: c.foreground }]}>Camera Access</Text>
         <Text style={[styles.permDesc, { color: c.mutedForeground }]}>
-          Point your phone at traffic and tap to count vehicles in real time.
+          The app uses your camera to detect and track vehicles automatically.
         </Text>
         <TouchableOpacity style={[styles.permBtn, { backgroundColor: c.primary }]} onPress={requestPermission}>
           <Text style={[styles.permBtnText, { color: c.primaryForeground }]}>Allow Camera</Text>
         </TouchableOpacity>
         {Platform.OS !== 'web' && !permission.canAskAgain && (
-          <Text style={[styles.permHint, { color: c.mutedForeground }]}>
-            Enable camera in Settings to continue.
-          </Text>
+          <Text style={[styles.permHint, { color: c.mutedForeground }]}>Enable camera in Settings to continue.</Text>
         )}
       </View>
     );
   }
 
-  // ── main UI ────────────────────────────────────────────────────────────────
+  // ── main UI ───────────────────────────────────────────────────────────────
   return (
-    <View style={[styles.container, { backgroundColor: c.background }]}>
-      <CameraView style={StyleSheet.absoluteFill} facing="back" />
+    <View
+      style={[styles.container, { backgroundColor: c.background }]}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setCameraSize({ w: width, h: height });
+      }}
+    >
+      {/* Camera preview */}
+      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+
+      {/* Dark scrim */}
       <View style={styles.scrim} />
 
-      {/* ── Top HUD ────────────────────────────────────────────────────────── */}
+      {/* Bounding box overlay */}
+      <BoundingBoxOverlay tracks={tracks} viewWidth={cameraSize.w} viewHeight={cameraSize.h} />
+
+      {/* ── HUD ─────────────────────────────────────────────────────────── */}
       <View style={[styles.hud, {
         paddingTop: insets.top + (Platform.OS === 'web' ? 67 : 12),
-        backgroundColor: c.background + 'cc',
+        backgroundColor: c.background + 'dd',
         borderBottomColor: c.border,
       }]}>
-        {/* Row 1: Total | Status | Time */}
+        {/* Row 1: total | status | time */}
         <View style={styles.hudRow}>
           <View style={styles.hudStat}>
             <Text style={[styles.hudLabel, { color: c.mutedForeground }]}>TOTAL</Text>
             <Text style={[styles.hudValue, { color: c.foreground }]}>{total}</Text>
           </View>
+
           <View style={[styles.statusPill, {
             backgroundColor: isRunning ? '#22c55e22' : c.secondary,
-            borderColor: isRunning ? '#22c55e55' : c.border,
+            borderColor: isRunning ? '#22c55e66' : c.border,
           }]}>
             <View style={[styles.statusDot, { backgroundColor: isRunning ? '#22c55e' : c.mutedForeground }]} />
             <Text style={[styles.statusText, { color: isRunning ? '#22c55e' : c.mutedForeground }]}>
-              {isRunning ? 'LIVE' : 'PAUSED'}
+              {isRunning ? 'LIVE' : 'READY'}
             </Text>
           </View>
+
           <View style={styles.hudStat}>
             <Text style={[styles.hudLabel, { color: c.mutedForeground }]}>TIME</Text>
             <Text style={[styles.hudValueMono, { color: c.foreground }]}>{formatElapsed(elapsed)}</Text>
           </View>
         </View>
 
-        {/* Row 2: Speed stats (always shown; -- when no data yet) */}
-        <View style={[styles.speedRow, { borderTopColor: c.border + '66' }]}>
+        {/* Row 2: speed stats */}
+        <View style={[styles.speedRow, { borderTopColor: c.border + '55' }]}>
           <View style={styles.speedStat}>
             <Text style={[styles.hudLabel, { color: c.mutedForeground }]}>AVG SPEED</Text>
-            <Text style={[styles.speedValue, { color: c.foreground }]}>
+            <Text style={[styles.speedVal, { color: c.foreground }]}>
               {avgSpeed !== null ? avgSpeed : '--'}
               <Text style={[styles.speedUnit, { color: c.mutedForeground }]}> km/h</Text>
             </Text>
           </View>
-          <View style={[styles.speedDivider, { backgroundColor: c.border }]} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <View style={styles.speedStat}>
             <Text style={[styles.hudLabel, { color: c.mutedForeground }]}>MAX SPEED</Text>
-            <Text style={[styles.speedValue, { color: maxSpeed !== null ? c.primary : c.foreground }]}>
+            <Text style={[styles.speedVal, { color: maxSpeed !== null ? c.primary : c.foreground }]}>
               {maxSpeed !== null ? maxSpeed : '--'}
               <Text style={[styles.speedUnit, { color: c.mutedForeground }]}> km/h</Text>
             </Text>
           </View>
-          <View style={[styles.speedDivider, { backgroundColor: c.border }]} />
+          <View style={[styles.divider, { backgroundColor: c.border }]} />
           <View style={styles.speedStat}>
-            <Text style={[styles.hudLabel, { color: c.mutedForeground }]}>SAMPLES</Text>
-            <Text style={[styles.speedValue, { color: c.foreground }]}>{speeds.length}</Text>
+            <Text style={[styles.hudLabel, { color: c.mutedForeground }]}>TRACKED</Text>
+            <Text style={[styles.speedVal, { color: c.foreground }]}>{tracks.length}</Text>
           </View>
+        </View>
+
+        {/* Row 3: per-class count chips */}
+        <View style={[styles.chipsRow, { borderTopColor: c.border + '44' }]}>
+          {(Object.entries(CLASS_MAP) as [string, { key: VehicleKey; color: string; icon: string }][])
+            .map(([cls, meta]) => (
+              <CountChip
+                key={cls}
+                label={cls}
+                icon={meta.icon}
+                count={counts[meta.key]}
+                color={meta.color}
+              />
+            ))}
         </View>
       </View>
 
-      {/* ── Vehicle counter grid ──────────────────────────────────────────── */}
-      <View style={styles.grid}>
-        {VEHICLES.map((v) => (
-          <CountButton
-            key={v.key}
-            vehicle={v}
-            count={counts[v.key]}
-            onPress={() => handleTap(v.key)}
-            disabled={!isRunning}
-          />
-        ))}
-      </View>
+      {/* ── Model not ready banner ────────────────────────────────────────── */}
+      {modelReady === false && (
+        <View style={[styles.banner, { backgroundColor: '#f59e0b22', borderColor: '#f59e0b55' }]}>
+          <Ionicons name="cloud-offline-outline" size={16} color="#f59e0b" />
+          <Text style={[styles.bannerText, { color: '#f59e0b' }]}>
+            Model loading on server — detection will start shortly
+          </Text>
+        </View>
+      )}
+
+      {/* ── Calibration strip ────────────────────────────────────────────── */}
+      {!isRunning && (
+        <View style={[styles.calibStrip, { backgroundColor: c.background + 'dd', borderColor: c.border }]}>
+          <MaterialCommunityIcons name="ruler" size={13} color={c.mutedForeground} />
+          <Text style={[styles.calibLabel, { color: c.mutedForeground }]}>Pixels/m:</Text>
+          <TouchableOpacity
+            style={[styles.calibBtn, { backgroundColor: c.secondary }]}
+            onPress={() => setPixelsPerMeter((p) => Math.max(10, p - 10))}
+          >
+            <Ionicons name="remove" size={13} color={c.foreground} />
+          </TouchableOpacity>
+          <Text style={[styles.calibValue, { color: c.foreground }]}>{pixelsPerMeter}</Text>
+          <TouchableOpacity
+            style={[styles.calibBtn, { backgroundColor: c.secondary }]}
+            onPress={() => setPixelsPerMeter((p) => Math.min(500, p + 10))}
+          >
+            <Ionicons name="add" size={13} color={c.foreground} />
+          </TouchableOpacity>
+          <Text style={[styles.calibHint, { color: c.mutedForeground }]}>
+            (pixels spanning 1 m in frame)
+          </Text>
+        </View>
+      )}
 
       {/* ── Bottom controls ───────────────────────────────────────────────── */}
       <View style={[styles.controls, {
-        paddingBottom: insets.bottom + CTRL_BOTTOM_EXTRA,
+        paddingBottom: insets.bottom + BOTTOM_EXTRA,
         backgroundColor: c.background + 'f0',
         borderTopColor: c.border,
       }]}>
         {!isRunning ? (
-          <>
-            {/* Calibration row: trap distance */}
-            <View style={[styles.calibRow, { borderColor: c.border }]}>
-              <MaterialCommunityIcons name="map-marker-distance" size={14} color={c.mutedForeground} />
-              <Text style={[styles.calibLabel, { color: c.mutedForeground }]}>Trap zone:</Text>
+          <View style={styles.controlRow}>
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: c.secondary, borderColor: c.border }]}
+              onPress={handleReset}
+              testID="btn-reset"
+            >
+              <Ionicons name="refresh" size={20} color={c.foreground} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.primaryBtn, { backgroundColor: c.primary }]}
+              onPress={handleStart}
+              testID="btn-start"
+            >
+              <Ionicons name="play" size={20} color={c.primaryForeground} />
+              <Text style={[styles.btnLabel, { color: c.primaryForeground }]}>Detect</Text>
+            </TouchableOpacity>
+            {total > 0 && (
               <TouchableOpacity
-                style={[styles.calibBtn, { backgroundColor: c.secondary }]}
-                onPress={() => setTrapDistanceM((d) => Math.max(1, d - 1))}
+                style={[styles.iconBtn, { backgroundColor: '#22c55e22', borderColor: '#22c55e55' }]}
+                onPress={handleSaveOpen}
+                testID="btn-save"
               >
-                <Ionicons name="remove" size={14} color={c.foreground} />
+                <Ionicons name="save-outline" size={20} color="#22c55e" />
               </TouchableOpacity>
-              <Text style={[styles.calibValue, { color: c.foreground }]}>{trapDistanceM} m</Text>
-              <TouchableOpacity
-                style={[styles.calibBtn, { backgroundColor: c.secondary }]}
-                onPress={() => setTrapDistanceM((d) => Math.min(100, d + 1))}
-              >
-                <Ionicons name="add" size={14} color={c.foreground} />
-              </TouchableOpacity>
-              <Text style={[styles.calibHint, { color: c.mutedForeground }]}>
-                · {speeds.length > 0 ? `${speeds.length} meas.` : 'use TRAP while running'}
-              </Text>
-            </View>
-
-            {/* Start / Reset / Save row */}
-            <View style={styles.controlRow}>
-              <TouchableOpacity
-                style={[styles.ctrlIconBtn, { backgroundColor: c.secondary, borderColor: c.border }]}
-                onPress={resetCounting}
-                testID="btn-reset"
-              >
-                <Ionicons name="refresh" size={20} color={c.foreground} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.ctrlPrimaryBtn, { backgroundColor: c.primary }]}
-                onPress={startCounting}
-                testID="btn-start"
-              >
-                <Ionicons name="play" size={20} color={c.primaryForeground} />
-                <Text style={[styles.ctrlBtnLabel, { color: c.primaryForeground }]}>Start</Text>
-              </TouchableOpacity>
-              {total > 0 && (
-                <TouchableOpacity
-                  style={[styles.ctrlIconBtn, { backgroundColor: '#22c55e22', borderColor: '#22c55e55' }]}
-                  onPress={handleSaveOpen}
-                  testID="btn-save"
-                >
-                  <Ionicons name="save-outline" size={20} color="#22c55e" />
-                </TouchableOpacity>
-              )}
-            </View>
-          </>
+            )}
+          </View>
         ) : (
           <View style={styles.controlRow}>
-            {/* Stop */}
             <TouchableOpacity
-              style={[styles.ctrlIconBtn, { backgroundColor: '#ef444422', borderColor: '#ef444455' }]}
-              onPress={stopCounting}
+              style={[styles.stopBtn, { backgroundColor: '#ef444422', borderColor: '#ef444455' }]}
+              onPress={handleStop}
               testID="btn-stop"
             >
               <Ionicons name="stop" size={20} color="#ef4444" />
+              <Text style={[styles.btnLabel, { color: '#ef4444' }]}>Stop</Text>
             </TouchableOpacity>
-
-            {/* Speed TRAP — prominent centre button */}
-            <TouchableOpacity
-              style={[
-                styles.trapBtn,
-                trapArmed
-                  ? { backgroundColor: '#ef4444', borderColor: '#ef4444' }
-                  : { backgroundColor: c.secondary, borderColor: c.primary + '88' },
-              ]}
-              onPress={handleTrap}
-              testID="btn-trap"
-            >
-              <MaterialCommunityIcons
-                name={trapArmed ? 'timer-stop' : 'timer-play-outline'}
-                size={22}
-                color={trapArmed ? '#fff' : c.primary}
-              />
-              <Text style={[styles.trapLabel, { color: trapArmed ? '#fff' : c.primary }]}>
-                {trapArmed ? 'STOP' : 'TRAP'}
-              </Text>
-              {trapArmed && (
-                <Text style={styles.trapSub}>vehicle in zone</Text>
-              )}
-            </TouchableOpacity>
-
-            {/* Save shortcut (when there's data) */}
             {total > 0 && (
               <TouchableOpacity
-                style={[styles.ctrlIconBtn, { backgroundColor: '#22c55e22', borderColor: '#22c55e55' }]}
-                onPress={() => { stopCounting(); handleSaveOpen(); }}
+                style={[styles.iconBtn, { backgroundColor: '#22c55e22', borderColor: '#22c55e55' }]}
+                onPress={handleSaveOpen}
                 testID="btn-stop-save"
               >
                 <Ionicons name="save-outline" size={20} color="#22c55e" />
@@ -425,37 +533,32 @@ export default function CounterScreen() {
                 : <Text style={[styles.modalSave, { color: c.primary }]}>Save</Text>}
             </TouchableOpacity>
           </View>
-
           <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
-            {/* Count summary */}
+            {/* Count breakdown */}
             <View style={[styles.summaryRow, { backgroundColor: c.card, borderColor: c.border }]}>
-              {VEHICLES.map((v) => (
-                <View key={v.key} style={styles.summaryItem}>
-                  <MaterialCommunityIcons name={v.icon as any} size={16} color={v.color} />
-                  <Text style={[styles.summaryCount, { color: c.foreground }]}>{counts[v.key]}</Text>
-                </View>
-              ))}
+              {(Object.entries(CLASS_MAP) as [string, { key: VehicleKey; color: string; icon: string }][])
+                .map(([cls, meta]) => (
+                  <View key={cls} style={styles.summaryItem}>
+                    <MaterialCommunityIcons name={meta.icon as any} size={16} color={meta.color} />
+                    <Text style={[styles.summaryCount, { color: c.foreground }]}>{counts[meta.key]}</Text>
+                  </View>
+                ))}
             </View>
-
             {/* Speed summary */}
             <View style={[styles.speedSummaryRow, { backgroundColor: c.card, borderColor: c.border }]}>
               <View style={styles.speedSummaryItem}>
-                <Text style={[styles.speedSummaryLabel, { color: c.mutedForeground }]}>AVG</Text>
-                <Text style={[styles.speedSummaryVal, { color: c.foreground }]}>
-                  {avgSpeed !== null ? `${avgSpeed} km/h` : '--'}
-                </Text>
+                <Text style={[styles.hudLabel, { color: c.mutedForeground }]}>AVG</Text>
+                <Text style={[styles.speedVal, { color: c.foreground }]}>{avgSpeed !== null ? `${avgSpeed} km/h` : '--'}</Text>
               </View>
-              <View style={[styles.speedDivider, { backgroundColor: c.border }]} />
+              <View style={[styles.divider, { backgroundColor: c.border }]} />
               <View style={styles.speedSummaryItem}>
-                <Text style={[styles.speedSummaryLabel, { color: c.mutedForeground }]}>MAX</Text>
-                <Text style={[styles.speedSummaryVal, { color: maxSpeed !== null ? c.primary : c.foreground }]}>
-                  {maxSpeed !== null ? `${maxSpeed} km/h` : '--'}
-                </Text>
+                <Text style={[styles.hudLabel, { color: c.mutedForeground }]}>MAX</Text>
+                <Text style={[styles.speedVal, { color: maxSpeed !== null ? c.primary : c.foreground }]}>{maxSpeed !== null ? `${maxSpeed} km/h` : '--'}</Text>
               </View>
-              <View style={[styles.speedDivider, { backgroundColor: c.border }]} />
+              <View style={[styles.divider, { backgroundColor: c.border }]} />
               <View style={styles.speedSummaryItem}>
-                <Text style={[styles.speedSummaryLabel, { color: c.mutedForeground }]}>DURATION</Text>
-                <Text style={[styles.speedSummaryVal, { color: c.foreground }]}>{formatElapsed(elapsed)}</Text>
+                <Text style={[styles.hudLabel, { color: c.mutedForeground }]}>DURATION</Text>
+                <Text style={[styles.speedVal, { color: c.foreground }]}>{formatElapsed(elapsed)}</Text>
               </View>
             </View>
 
@@ -481,7 +584,7 @@ export default function CounterScreen() {
               style={[styles.input, styles.inputMulti, { backgroundColor: c.card, borderColor: c.border, color: c.foreground }]}
               value={sessionNotes}
               onChangeText={setSessionNotes}
-              placeholder="Weather conditions, observations…"
+              placeholder="Weather, visibility, other observations…"
               placeholderTextColor={c.mutedForeground}
               multiline
               testID="input-notes"
@@ -493,12 +596,12 @@ export default function CounterScreen() {
   );
 }
 
-// ─── styles ────────────────────────────────────────────────────────────────────
+// ─── styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingHorizontal: 32 },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(7,13,26,0.55)' },
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(7,13,26,0.45)' },
 
   // Permission
   permTitle: { fontSize: 22, fontWeight: '700', marginTop: 16 },
@@ -508,95 +611,64 @@ const styles = StyleSheet.create({
   permHint: { fontSize: 12, marginTop: 12, textAlign: 'center' },
 
   // HUD
-  hud: { paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1 },
-  hudRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10 },
-  hudStat: { alignItems: 'center', minWidth: 64 },
-  hudLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, marginBottom: 2 },
+  hud: { paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: 1 },
+  hudRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 8 },
+  hudStat: { alignItems: 'center', minWidth: 60 },
+  hudLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, marginBottom: 1 },
   hudValue: { fontSize: 30, fontWeight: '800' },
   hudValueMono: { fontSize: 26, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
-
-  // Speed row in HUD
-  speedRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  speedRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
   speedStat: { flex: 1, alignItems: 'center' },
-  speedDivider: { width: StyleSheet.hairlineWidth, height: 28, marginHorizontal: 4 },
-  speedValue: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  speedUnit: { fontSize: 11, fontWeight: '500' },
+  speedVal: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  speedUnit: { fontSize: 10, fontWeight: '500' },
+  divider: { width: StyleSheet.hairlineWidth, height: 26, marginHorizontal: 4 },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, borderWidth: 1 },
+  chipCount: { fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
 
-  // Counter grid
-  grid: {
-    flex: 1, flexDirection: 'row', flexWrap: 'wrap',
-    paddingHorizontal: 12, paddingVertical: 10,
-    alignContent: 'center', justifyContent: 'center', gap: 8,
-  },
-  btnWrap: { width: '30%' },
-  countBtn: {
-    alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 12, borderRadius: 12, borderWidth: 1,
-    backgroundColor: 'rgba(7,13,26,0.80)', gap: 3,
-  },
-  countBadge: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
-  countNum: { fontSize: 26, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  countLabel: { fontSize: 10, color: '#8fa3b8', fontWeight: '600', letterSpacing: 0.5 },
+  // Bounding boxes
+  bbox: { position: 'absolute', borderWidth: 2, borderRadius: 3 },
+  bboxTag: { position: 'absolute', top: -18, left: 0, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 3 },
+  bboxTagText: { color: '#fff', fontSize: 10, fontWeight: '700' },
 
-  // Controls
-  controls: { paddingHorizontal: 16, paddingTop: 10, borderTopWidth: 1 },
-  controlRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 4 },
+  // Banner
+  banner: { marginHorizontal: 16, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 8, borderWidth: 1 },
+  bannerText: { fontSize: 12, flex: 1, fontWeight: '500' },
 
-  // Calibration row
-  calibRow: {
+  // Calibration
+  calibStrip: {
+    marginHorizontal: 16, marginTop: 6,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginBottom: 8, paddingHorizontal: 8, paddingVertical: 6,
+    paddingHorizontal: 10, paddingVertical: 7,
     borderWidth: 1, borderRadius: 8,
   },
   calibLabel: { fontSize: 11, fontWeight: '600' },
-  calibBtn: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  calibValue: { fontSize: 13, fontWeight: '700', minWidth: 32, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  calibBtn: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  calibValue: { fontSize: 13, fontWeight: '700', minWidth: 36, textAlign: 'center', fontVariant: ['tabular-nums'] },
   calibHint: { fontSize: 10, flex: 1 },
 
-  ctrlIconBtn: {
-    width: 50, height: 50, borderRadius: 25,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1,
-  },
-  ctrlPrimaryBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 28, paddingVertical: 13, borderRadius: 25,
-  },
-  ctrlBtnLabel: { fontSize: 15, fontWeight: '700' },
-
-  // Trap button
-  trapBtn: {
-    flex: 1, maxWidth: 200,
-    flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 10, borderRadius: 14, borderWidth: 1, gap: 2,
-  },
-  trapLabel: { fontSize: 13, fontWeight: '800', letterSpacing: 1.5 },
-  trapSub: { fontSize: 9, color: 'rgba(255,255,255,0.7)', letterSpacing: 0.5 },
+  // Controls
+  controls: { paddingHorizontal: 20, paddingTop: 10, borderTopWidth: 1 },
+  controlRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  iconBtn: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  primaryBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 25 },
+  stopBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 36, paddingVertical: 14, borderRadius: 25, borderWidth: 1 },
+  btnLabel: { fontSize: 15, fontWeight: '700' },
 
   // Modal
   modal: { flex: 1 },
-  modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1,
-  },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1 },
   modalTitle: { fontSize: 17, fontWeight: '700' },
   modalSave: { fontSize: 17, fontWeight: '700' },
   modalBody: { flex: 1, padding: 20 },
-  summaryRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: 16, borderRadius: 10, borderWidth: 1, marginBottom: 2,
-  },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 10, borderWidth: 1, marginBottom: 2 },
   summaryItem: { alignItems: 'center', gap: 4 },
   summaryCount: { fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  speedSummaryRow: {
-    flexDirection: 'row', alignItems: 'center',
-    padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 20,
-  },
+  speedSummaryRow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 20 },
   speedSummaryItem: { flex: 1, alignItems: 'center', gap: 3 },
-  speedSummaryLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5 },
-  speedSummaryVal: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
   fieldLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 6, marginTop: 16 },
   input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 15 },
   inputMulti: { height: 80, textAlignVertical: 'top' },

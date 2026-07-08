@@ -78,3 +78,29 @@ export interface SessionInput {
   notes?: string | null;
 }
 
+export interface DetectRequest {
+  /** Base64-encoded JPEG frame (no data URI prefix) */
+  image: string;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  threshold?: number;
+}
+
+export interface Detection {
+  classId: number;
+  className: string;
+  score: number;
+  /**
+     * Normalised [x1, y1, x2, y2] in [0..1]
+     * @minItems 4
+     * @maxItems 4
+     */
+  bboxNorm: number[];
+}
+
+export interface DetectResponse {
+  detections: Detection[];
+}
+

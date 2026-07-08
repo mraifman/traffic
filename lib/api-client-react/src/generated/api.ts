@@ -20,6 +20,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  DetectRequest,
+  DetectResponse,
   HealthStatus,
   Session,
   SessionInput
@@ -423,5 +425,76 @@ export const useDeleteSession = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteSessionMutationOptions(options));
+    }
+
+export const getDetectObjectsUrl = () => {
+
+
+
+
+  return `/api/detect`
+}
+
+/**
+ * @summary Run COCO-SSD object detection on a JPEG frame
+ */
+export const detectObjects = async (detectRequest: DetectRequest, options?: RequestInit): Promise<DetectResponse> => {
+
+  return customFetch<DetectResponse>(getDetectObjectsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(detectRequest)
+  }
+);}
+
+
+
+
+
+export const getDetectObjectsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof detectObjects>>, TError,{data: BodyType<DetectRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof detectObjects>>, TError,{data: BodyType<DetectRequest>}, TContext> => {
+
+const mutationKey = ['detectObjects'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof detectObjects>>, {data: BodyType<DetectRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  detectObjects(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DetectObjectsMutationResult = NonNullable<Awaited<ReturnType<typeof detectObjects>>>
+    export type DetectObjectsMutationBody = BodyType<DetectRequest>
+    export type DetectObjectsMutationError = ErrorType<void>
+
+    /**
+ * @summary Run COCO-SSD object detection on a JPEG frame
+ */
+export const useDetectObjects = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof detectObjects>>, TError,{data: BodyType<DetectRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof detectObjects>>,
+        TError,
+        {data: BodyType<DetectRequest>},
+        TContext
+      > => {
+      return useMutation(getDetectObjectsMutationOptions(options));
     }
 
