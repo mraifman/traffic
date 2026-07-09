@@ -61,15 +61,12 @@ target 'TrafficAnalyzeriOS' do
     )
 
     # fmt ships with Folly/React Native and uses `consteval` (C++20) which
-    # newer Clang rejects in certain contexts. Disable consteval in fmt so
-    # it falls back to its C++17-compatible path.
-    installer.pods_project.targets.each do |target|
-      if target.name == 'fmt'
-        target.build_configurations.each do |config|
-          config.build_settings['OTHER_CPLUSPLUSFLAGS'] =
-            '$(inherited) -DFMT_USE_CONSTEVAL=0'
-        end
-      end
+    # newer Clang rejects in certain contexts. Patch the header directly so
+    # FMT_CONSTEVAL falls back to constexpr regardless of compiler flags.
+    Dir["#{installer.sandbox.root}/fmt/include/fmt/*.h"].each do |header|
+      content = File.read(header)
+      patched = content.gsub(/^(#\s*define\s+FMT_CONSTEVAL)\s+consteval\b/, '\1 constexpr')
+      File.write(header, patched) if patched != content
     end
   end
 end
