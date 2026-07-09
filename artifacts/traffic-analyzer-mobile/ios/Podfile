@@ -66,7 +66,10 @@ target 'TrafficAnalyzeriOS' do
     Dir["#{installer.sandbox.root}/fmt/include/fmt/*.h"].each do |header|
       content = File.read(header)
       patched = content.gsub(/^(#\s*define\s+FMT_CONSTEVAL)\s+consteval\b/, '\1 constexpr')
-      File.write(header, patched) if patched != content
+      if patched != content
+        File.chmod(0644, header)
+        File.write(header, patched)
+      end
     end
   end
 end
